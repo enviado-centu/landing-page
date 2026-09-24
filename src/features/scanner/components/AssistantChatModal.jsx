@@ -1,20 +1,32 @@
 import { useState, useRef, useEffect } from "react";
 import BotAvatar from "./BotAvatar";
 
-export default function AssistantChatModal({ isOpen, onClose }) {
+const NIVEL_TEXTO = { high: "riesgo alto", medium: "riesgo medio", low: "riesgo bajo" };
+const NIVEL_COLOR = { high: "text-rose-600", medium: "text-amber-600", low: "text-emerald-600" };
+
+function mensajeInicial(scan) {
+  const resumen = scan?.summary;
+  if (!resumen) {
+    return (
+      <span>
+        ¡Hola! ¿Qué te ocurrió o qué te preocupa? Estoy acá para ayudarte paso a paso.
+      </span>
+    );
+  }
+  return (
+    <span>
+      ¡Hola! Vi que analizaste <strong>{scan.target.domain}</strong> y dio{" "}
+      <span className={`font-bold ${NIVEL_COLOR[resumen.level]}`}>
+        {NIVEL_TEXTO[resumen.level]} ({resumen.score_100}%)
+      </span>
+      . ¿Qué te ocurrió o qué te preocupa? Estoy acá para ayudarte paso a paso.
+    </span>
+  );
+}
+
+export default function AssistantChatModal({ isOpen, onClose, scan }) {
+  // Demo: las respuestas son de ejemplo, todavía no hay un asistente real conectado
   const [messages, setMessages] = useState([
-    {
-      id: 1,
-      sender: "bot",
-      time: "14:32",
-      text: (
-        <span>
-          ¡Hola! Vi que analizaste el enlace y dio alerta de peligro (
-          <span className="text-rose-600 font-bold">94%</span>). ¿Qué te ocurrió
-          o qué te preocupa? Estoy acá para ayudarte paso a paso.
-        </span>
-      ),
-    },
     {
       id: 2,
       sender: "user",
@@ -163,6 +175,11 @@ export default function AssistantChatModal({ isOpen, onClose }) {
           </button>
         </div>
 
+        <div className="px-4 py-2 bg-amber-50 border-b border-amber-200 text-amber-800 text-[12px] font-semibold flex items-center gap-1.5 shrink-0">
+          <span className="material-symbols-outlined text-[16px]">science</span>
+          <span>Demo: las respuestas del asistente son de ejemplo.</span>
+        </div>
+
         {/* Chat Conversation Stream */}
         <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50/50">
           {/* Timestamp chip */}
@@ -172,7 +189,7 @@ export default function AssistantChatModal({ isOpen, onClose }) {
             </span>
           </div>
 
-          {messages.map((msg) =>
+          {[{ id: 0, sender: "bot", time: "14:32", text: mensajeInicial(scan) }, ...messages].map((msg) =>
             msg.sender === "bot" ? (
               <div
                 key={msg.id}

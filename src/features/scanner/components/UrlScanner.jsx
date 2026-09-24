@@ -16,7 +16,7 @@ export default function UrlScanner({ url, setUrl, onScan, isScanning }) {
 
   const handleKeyDown = (e) => {
     if (e.key === "Enter" && url.trim()) {
-      onScan("url", url);
+      onScan(url);
     }
   };
 
@@ -40,7 +40,7 @@ export default function UrlScanner({ url, setUrl, onScan, isScanning }) {
         <button
           className="inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-lg bg-[#10b981] hover:bg-[#006c49] text-white font-label-lg text-label-lg font-bold transition-all duration-200 shadow-[0_4px_16px_rgba(16,185,129,0.35)] hover:shadow-[0_6px_20px_rgba(16,185,129,0.45)] active:scale-[0.99] whitespace-nowrap disabled:opacity-50 cursor-pointer"
           disabled={isScanning || !url.trim()}
-          onClick={() => onScan("url", url)}
+          onClick={() => onScan(url)}
         >
           <span className="material-symbols-outlined text-[20px]">radar</span>
           <span>Analizar Enlace</span>
@@ -61,7 +61,7 @@ export default function UrlScanner({ url, setUrl, onScan, isScanning }) {
             className="font-label-sm text-label-sm px-2.5 py-1 rounded-md bg-[#f1f5f9] hover:bg-[#e2e8f0] text-[#334155] hover:text-[#006c49] transition-colors border border-[#e2e8f0] font-mono cursor-pointer"
             onClick={() => {
               setUrl(ex.value);
-              onScan("url", ex.value);
+              onScan(ex.value);
             }}
           >
             {ex.label}

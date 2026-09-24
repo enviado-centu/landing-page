@@ -1,13 +1,12 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import UrlScanner from "./UrlScanner";
-import VoucherScanner from "./VoucherScanner";
 import ScanProgress from "./ScanProgress";
 import DiagnosticResult from "./DiagnosticResult";
 import AssistantChatModal from "./AssistantChatModal";
 import apiService from "../../../services/api";
+import { normalizarUrl } from "../normalizarUrl";
 
 export default function ScannerContainer() {
-  const [activeTab, setActiveTab] = useState("url"); // 'url' | 'doc'
   const [url, setUrl] = useState("");
   const [isScanning, setIsScanning] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -18,50 +17,45 @@ export default function ScannerContainer() {
 
   const scanIntervalRef = useRef(null);
 
-  const handleScan = async (type, targetName) => {
+  useEffect(() => () => clearInterval(scanIntervalRef.current), []);
+
+  const handleScan = async (texto) => {
     if (isScanning) return;
 
     setResult(null);
     setError(null);
+
+    let urlNormalizada;
+    try {
+      urlNormalizada = normalizarUrl(texto);
+    } catch (err) {
+      setError(err.message);
+      return;
+    }
+    setUrl(urlNormalizada);
+
     setIsScanning(true);
     setProgress(15);
     setStatusLabel("Iniciando análisis de seguridad...");
 
-    if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
-
+    clearInterval(scanIntervalRef.current);
     let currentProgress = 15;
     scanIntervalRef.current = setInterval(() => {
       currentProgress += 15;
-
       if (currentProgress >= 90) {
         clearInterval(scanIntervalRef.current);
-      } else {
-        setProgress(currentProgress);
-        if (currentProgress > 30 && currentProgress <= 60) {
-          setStatusLabel("Analizando patrones de URL y dominios sospechosos...");
-        } else if (currentProgress > 60) {
-          setStatusLabel("Evaluando señales de phishing con IA...");
-        }
+        return;
+      }
+      setProgress(currentProgress);
+      if (currentProgress > 30 && currentProgress <= 60) {
+        setStatusLabel("Analizando patrones de URL y dominios sospechosos...");
+      } else if (currentProgress > 60) {
+        setStatusLabel("Evaluando señales de phishing...");
       }
     }, 200);
 
     try {
-      // Extraer dominio de la URL
-      let domain = "";
-      try {
-        const urlObj = new URL(targetName || url);
-        domain = urlObj.hostname;
-      } catch {
-        domain = (targetName || url).replace(/^https?:\/\//, "").split("/")[0];
-      }
-
-      // Llamar al backend
-      const scanResult = await apiService.createScan({
-        url: targetName || url,
-        domain: domain,
-        title: "",
-        visible_text: "",
-      });
+      const scan = await apiService.createScan({ url: urlNormalizada });
 
       clearInterval(scanIntervalRef.current);
       setProgress(100);
@@ -69,88 +63,29 @@ export default function ScannerContainer() {
 
       setTimeout(() => {
         setIsScanning(false);
-        processBackendResult(scanResult, type, targetName);
+        setResult(scan);
       }, 400);
     } catch (err) {
       clearInterval(scanIntervalRef.current);
       setIsScanning(false);
-      setError(err.message || "Error al analizar la URL");
-      console.error("Scan error:", err);
+      setError(err.message || "No se pudo analizar la dirección.");
     }
-  };
-
-  const processBackendResult = (scanResult, type, targetName) => {
-    const { risk, classification, signals } = scanResult;
-    
-    // Determinar nivel de riesgo
-    let level = "safe";
-    if (risk.score >= 0.7) {
-      level = "danger";
-    } else if (risk.score >= 0.4) {
-      level = "warning";
-    }
-
-    // Construir descripción basada en señales
-    let description = "";
-    if (signals.rules && signals.rules.available && signals.rules.triggered_rules.length > 0) {
-      const rules = signals.rules.details?.senales || [];
-      if (rules.length > 0) {
-        description = rules.map(r => r.frase).join(". ") + ".";
-      }
-    }
-
-    if (signals.kev && signals.kev.available) {
-      if (signals.kev.is_phishing > 0.7) {
-        description += " El modelo de IA detectó alta probabilidad de phishing.";
-      }
-    }
-
-    if (!description) {
-      description = "No se detectaron señales de riesgo significativas.";
-    }
-
-    // Determinar título y badge
-    let title = "";
-    let badge = "";
-    
-    if (level === "danger") {
-      title = "¡Peligro! Sitio sospechoso detectado";
-      badge = "Riesgo Alto";
-    } else if (level === "warning") {
-      title = "Precaución: Sitio con señales de alerta";
-      badge = "Riesgo Moderado";
-    } else {
-      title = "Sitio aparentemente seguro";
-      badge = "Riesgo Bajo";
-    }
-
-    setResult({
-      type: type,
-      level: level,
-      target: targetName || url,
-      title: title,
-      badge: badge,
-      description: description,
-      risk_score: risk.score,
-      classification: classification,
-      signals: signals,
-    });
   };
 
   const handleReset = () => {
     setResult(null);
+    setError(null);
     setIsScanning(false);
     setProgress(0);
   };
 
   return (
     <div className="w-full max-w-4xl mt-10">
-      {/* If scan is finished, display the full Diagnostic Result view */}
       {!isScanning && result ? (
         <DiagnosticResult
+          scan={result}
           onOpenAssistant={() => setIsAssistantOpen(true)}
           onReset={handleReset}
-          targetUrl={result.target}
         />
       ) : (
         <>
@@ -158,15 +93,8 @@ export default function ScannerContainer() {
             {/* Tab Navigation Switcher */}
             <div className="flex items-center justify-center p-1.5 bg-[#f8fafc] rounded-xl border border-[#e2e8f0] max-w-2xl mx-auto gap-1">
               <button
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg font-label-md text-label-md transition-all duration-200 cursor-pointer ${
-                  activeTab === "url"
-                    ? "bg-white text-[#006c49] font-bold shadow-sm border border-[#e2e8f0]"
-                    : "text-[#64748b] hover:text-[#0b132b] hover:bg-white/80 font-medium"
-                }`}
-                onClick={() => {
-                  setActiveTab("url");
-                  handleReset();
-                }}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg font-label-md text-label-md transition-all duration-200 bg-white text-[#006c49] font-bold shadow-sm border border-[#e2e8f0]"
+                aria-pressed="true"
               >
                 <span className="material-symbols-outlined text-[18px] text-[#10b981]">
                   travel_explore
@@ -174,38 +102,43 @@ export default function ScannerContainer() {
                 <span className="tracking-wide">ENLACE / URL</span>
               </button>
 
+              {/* Todavía no existe análisis de comprobantes: la pestaña queda deshabilitada */}
               <button
-                className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg font-label-md text-label-md transition-all duration-200 cursor-pointer ${
-                  activeTab === "doc"
-                    ? "bg-white text-[#006c49] font-bold shadow-sm border border-[#e2e8f0]"
-                    : "text-[#64748b] hover:text-[#0b132b] hover:bg-white/80 font-medium"
-                }`}
-                onClick={() => {
-                  setActiveTab("doc");
-                  handleReset();
-                }}
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 px-3 rounded-lg font-label-md text-label-md text-[#94a3b8] font-medium cursor-not-allowed"
+                disabled
+                title="El análisis de comprobantes y capturas todavía no está disponible"
               >
                 <span className="material-symbols-outlined text-[18px]">
                   receipt_long
                 </span>
                 <span className="tracking-wide">COMPROBANTE / CAPTURA</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                  Próximamente
+                </span>
               </button>
             </div>
 
-            {/* Scanner Panels */}
+            {/* Scanner Panel */}
             <div className="mt-4 p-1 sm:p-3">
-              {activeTab === "url" ? (
-                <UrlScanner
-                  isScanning={isScanning}
-                  onScan={handleScan}
-                  setUrl={setUrl}
-                  url={url}
-                />
-              ) : (
-                <VoucherScanner isScanning={isScanning} onScan={handleScan} />
+              <UrlScanner
+                isScanning={isScanning}
+                onScan={handleScan}
+                setUrl={setUrl}
+                url={url}
+              />
+
+              {error && (
+                <div
+                  role="alert"
+                  className="mt-3 flex items-start gap-2 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm"
+                >
+                  <span className="material-symbols-outlined text-[18px] shrink-0">
+                    error
+                  </span>
+                  <span>{error}</span>
+                </div>
               )}
 
-              {/* Progress Box */}
               {isScanning && (
                 <ScanProgress progress={progress} statusLabel={statusLabel} />
               )}
@@ -231,6 +164,7 @@ export default function ScannerContainer() {
       <AssistantChatModal
         isOpen={isAssistantOpen}
         onClose={() => setIsAssistantOpen(false)}
+        scan={result}
       />
     </div>
   );

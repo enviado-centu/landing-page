@@ -1,5 +1,20 @@
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
+/**
+ * Convierte el "detail" de un error de FastAPI en un mensaje legible.
+ * Los 422 traen un array de errores de validación ({loc, msg, ...}); el resto, un string.
+ */
+export function formatApiError(detail, status) {
+  if (Array.isArray(detail)) {
+    const mensajes = detail
+      .map((e) => (typeof e?.msg === 'string' ? e.msg.replace(/^Value error, /, '') : null))
+      .filter(Boolean);
+    if (mensajes.length > 0) return [...new Set(mensajes)].join('. ');
+  }
+  if (typeof detail === 'string' && detail) return detail;
+  return status ? `Error ${status} en la petición` : 'Error en la petición';
+}
+
 class ApiService {
   constructor() {
     this.token = localStorage.getItem('auth_token');
@@ -29,26 +44,29 @@ class ApiService {
       ...options.headers,
     };
 
-    if (this.token) {
+    const conSesion = !!this.token;
+    if (conSesion) {
       headers['Authorization'] = `Bearer ${this.token}`;
     }
 
+    let response;
     try {
-      const response = await fetch(url, {
-        ...options,
-        headers,
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ detail: 'Error en la petición' }));
-        throw new Error(error.detail || `Error ${response.status}`);
-      }
-
-      return await response.json();
-    } catch (error) {
-      console.error('API Error:', error);
-      throw error;
+      response = await fetch(url, { ...options, headers });
+    } catch {
+      throw new Error('No se pudo conectar con el servidor. Revisá tu conexión e intentá de nuevo.');
     }
+
+    if (!response.ok) {
+      const cuerpo = await response.json().catch(() => null);
+      // Un 401 en el login es clave incorrecta, no sesión vencida
+      if (response.status === 401 && conSesion && endpoint !== '/auth/login') {
+        this.setToken(null);
+        throw new Error('Tu sesión venció. Volvé a iniciar sesión.');
+      }
+      throw new Error(formatApiError(cuerpo?.detail, response.status));
+    }
+
+    return await response.json();
   }
 
   // Auth endpoints
