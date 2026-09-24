@@ -4,6 +4,7 @@ import VoucherScanner from "./VoucherScanner";
 import ScanProgress from "./ScanProgress";
 import DiagnosticResult from "./DiagnosticResult";
 import AssistantChatModal from "./AssistantChatModal";
+import apiService from "../../../services/api";
 
 export default function ScannerContainer() {
   const [activeTab, setActiveTab] = useState("url"); // 'url' | 'doc'
@@ -13,67 +14,127 @@ export default function ScannerContainer() {
   const [statusLabel, setStatusLabel] = useState("");
   const [result, setResult] = useState(null);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [error, setError] = useState(null);
 
   const scanIntervalRef = useRef(null);
 
-  const handleScan = (type, targetName) => {
+  const handleScan = async (type, targetName) => {
     if (isScanning) return;
 
     setResult(null);
+    setError(null);
     setIsScanning(true);
     setProgress(15);
-    setStatusLabel("Iniciando conexión con nodos cívicos descentralizados...");
+    setStatusLabel("Iniciando análisis de seguridad...");
 
     if (scanIntervalRef.current) clearInterval(scanIntervalRef.current);
 
     let currentProgress = 15;
     scanIntervalRef.current = setInterval(() => {
-      currentProgress += 28;
+      currentProgress += 15;
 
-      if (currentProgress >= 95) {
+      if (currentProgress >= 90) {
         clearInterval(scanIntervalRef.current);
-        setProgress(100);
-        setStatusLabel("Diagnóstico completado.");
-
-        setTimeout(() => {
-          setIsScanning(false);
-          generateVerdict(type, targetName);
-        }, 400);
       } else {
         setProgress(currentProgress);
-        if (currentProgress > 50) {
-          setStatusLabel(
-            "Inspeccionando certificados SSL, firmas de hash y tipografía...",
-          );
+        if (currentProgress > 30 && currentProgress <= 60) {
+          setStatusLabel("Analizando patrones de URL y dominios sospechosos...");
+        } else if (currentProgress > 60) {
+          setStatusLabel("Evaluando señales de phishing con IA...");
         }
       }
-    }, 250);
+    }, 200);
+
+    try {
+      // Extraer dominio de la URL
+      let domain = "";
+      try {
+        const urlObj = new URL(targetName || url);
+        domain = urlObj.hostname;
+      } catch {
+        domain = (targetName || url).replace(/^https?:\/\//, "").split("/")[0];
+      }
+
+      // Llamar al backend
+      const scanResult = await apiService.createScan({
+        url: targetName || url,
+        domain: domain,
+        title: "",
+        visible_text: "",
+      });
+
+      clearInterval(scanIntervalRef.current);
+      setProgress(100);
+      setStatusLabel("Diagnóstico completado.");
+
+      setTimeout(() => {
+        setIsScanning(false);
+        processBackendResult(scanResult, type, targetName);
+      }, 400);
+    } catch (err) {
+      clearInterval(scanIntervalRef.current);
+      setIsScanning(false);
+      setError(err.message || "Error al analizar la URL");
+      console.error("Scan error:", err);
+    }
   };
 
-  const generateVerdict = (type, targetName) => {
-    if (type === "doc") {
-      const fileName = targetName || "comprobante_banco.jpg";
-      setResult({
-        type: "doc",
-        level: "danger",
-        icon: "difference",
-        title: "Comprobante Sospechoso: Inconsistencia Detectada",
-        badge: "Edición Digital Detectada",
-        target: fileName,
-        description: `Archivo: ${fileName}. El bloque de importe tiene densidad tipográfica no estándar con bordes pixelados respecto al resto de la plantilla.`,
-      });
-    } else {
-      const val = (targetName || url).toLowerCase();
-      setResult({
-        type: "url",
-        level: "danger",
-        target: targetName || url || "mercadopago.seguridad-alerta-cuenta.com",
-        title: "¡Peligro! Es una página falsa",
-        badge: "Severidad Crítica",
-        description:
-          "No ingreses tus datos ni tu contraseña. Quieren robar tu cuenta bancaria haciéndose pasar por Mercado Pago.",
-      });
+  const processBackendResult = (scanResult, type, targetName) => {
+    const { risk, classification, signals } = scanResult;
+    
+    // Determinar nivel de riesgo
+    let level = "safe";
+    if (risk.score >= 0.7) {
+      level = "danger";
+    } else if (risk.score >= 0.4) {
+      level = "warning";
     }
+
+    // Construir descripción basada en señales
+    let description = "";
+    if (signals.rules && signals.rules.available && signals.rules.triggered_rules.length > 0) {
+      const rules = signals.rules.details?.senales || [];
+      if (rules.length > 0) {
+        description = rules.map(r => r.frase).join(". ") + ".";
+      }
+    }
+
+    if (signals.kev && signals.kev.available) {
+      if (signals.kev.is_phishing > 0.7) {
+        description += " El modelo de IA detectó alta probabilidad de phishing.";
+      }
+    }
+
+    if (!description) {
+      description = "No se detectaron señales de riesgo significativas.";
+    }
+
+    // Determinar título y badge
+    let title = "";
+    let badge = "";
+    
+    if (level === "danger") {
+      title = "¡Peligro! Sitio sospechoso detectado";
+      badge = "Riesgo Alto";
+    } else if (level === "warning") {
+      title = "Precaución: Sitio con señales de alerta";
+      badge = "Riesgo Moderado";
+    } else {
+      title = "Sitio aparentemente seguro";
+      badge = "Riesgo Bajo";
+    }
+
+    setResult({
+      type: type,
+      level: level,
+      target: targetName || url,
+      title: title,
+      badge: badge,
+      description: description,
+      risk_score: risk.score,
+      classification: classification,
+      signals: signals,
+    });
   };
 
   const handleReset = () => {

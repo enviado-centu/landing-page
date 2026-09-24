@@ -1,8 +1,10 @@
 import { Link, useLocation } from "react-router-dom";
+import { useAuth } from "../contexts/AuthContext";
 
 export default function Navbar() {
   const location = useLocation();
   const isScanner = location.pathname === "/scanner";
+  const { isAuthenticated, logout, user } = useAuth();
 
   return (
     <header className="fixed top-0 w-full z-50 bg-white/90 backdrop-blur-xl border-b border-[#e2e8f0] shadow-[0_1px_8px_rgba(0,0,0,0.03)]">
@@ -83,15 +85,52 @@ export default function Navbar() {
             </span>
           </div>
 
-          <Link
-            className="inline-flex items-center gap-space-xs px-space-md py-space-xs rounded-lg bg-primary-container text-on-primary font-label-lg text-label-lg shadow-[0_4px_16px_rgba(16,185,129,0.35)] hover:bg-primary transition-all duration-200"
-            to="/scanner"
-          >
-            <span className="material-symbols-outlined text-[18px]">
-              travel_explore
-            </span>
-            <span className="hidden sm:inline">Probar Escáner</span>
-          </Link>
+          {isAuthenticated ? (
+            <>
+              <span className="hidden sm:inline text-sm text-[#64748b]">
+                {user?.email}
+              </span>
+              <button
+                onClick={logout}
+                className="inline-flex items-center gap-space-xs px-space-md py-space-xs rounded-lg bg-[#f1f5f9] hover:bg-[#e2e8f0] text-[#334155] font-label-lg text-label-lg transition-all duration-200"
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  logout
+                </span>
+                <span className="hidden sm:inline">Salir</span>
+              </button>
+              <Link
+                className="inline-flex items-center gap-space-xs px-space-md py-space-xs rounded-lg bg-primary-container text-on-primary font-label-lg text-label-lg shadow-[0_4px_16px_rgba(16,185,129,0.35)] hover:bg-primary transition-all duration-200"
+                to="/scanner"
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  travel_explore
+                </span>
+                <span className="hidden sm:inline">Probar Escáner</span>
+              </Link>
+            </>
+          ) : (
+            <>
+              <Link
+                className="inline-flex items-center gap-space-xs px-space-md py-space-xs rounded-lg bg-[#f1f5f9] hover:bg-[#e2e8f0] text-[#334155] font-label-lg text-label-lg transition-all duration-200"
+                to="/login"
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  login
+                </span>
+                <span className="hidden sm:inline">Iniciar Sesión</span>
+              </Link>
+              <Link
+                className="inline-flex items-center gap-space-xs px-space-md py-space-xs rounded-lg bg-primary-container text-on-primary font-label-lg text-label-lg shadow-[0_4px_16px_rgba(16,185,129,0.35)] hover:bg-primary transition-all duration-200"
+                to="/register"
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  person_add
+                </span>
+                <span className="hidden sm:inline">Registrarse</span>
+              </Link>
+            </>
+          )}
         </div>
       </div>
     </header>
